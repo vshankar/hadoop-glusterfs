@@ -52,7 +52,6 @@ public class GlusterFileSystem extends FileSystem {
         private URI        uri          = null;
         private Path       workingDir   = null;
         private String     glusterMount = null;
-        private boolean    mounted      = false;
 
         /* for quick IO */
         private boolean quickSlaveIO = false;
@@ -71,58 +70,37 @@ public class GlusterFileSystem extends FileSystem {
                 return uri;
         }
 
-        public boolean FUSEMount (String volname, String server, String mount)
-                throws IOException, InterruptedException  {
-                boolean        ret      = true;
-                int            retVal   = 0;
-                Process        p        = null;
-                String         s        = null;
-                String         mountCmd = null;
+        /*
+         * Do sanity checks before proceeding. Make sure the mount point (which is
+         * a soft link to mountbroker provided alias) is valid.
+         */
+        public boolean sanitize (String mountPoint) throws IOException {
+                boolean rv = true;
+                File mount = new File(mountPoint);
+                String absPath = mount.getCanonicalPath();
+                File absMount = new File(absPath);
 
-                mountCmd = "mount -t glusterfs " + server + ":" + "/" + volname + " " + mount;
+                if (!(mountPoint.length() > 0 && mount.exists() && mount.isDirectory()))
+                        rv = false;
 
-                try {
-                        p = Runtime.getRuntime().exec(mountCmd);
+                if (!(absPath.length() > 0 && absMount.isDirectory()))
+                        rv = false;
 
-                        retVal = p.waitFor();
-                        if (retVal != 0)
-                                ret = false;
-
-                } catch (IOException e) {
-                        System.out.println ("Problem mounting FUSE mount on: " + mount);
-                        e.printStackTrace();
-                        System.exit(-1);
-                }
-
-                return ret;
+                absMount = mount = null;
+                return rv;
         }
 
         public void initialize (URI uri, Configuration conf) throws IOException {
                 boolean ret             = false;
-                String  volName         = null;
-                String  remoteGFSServer = null;
                 String  needQuickRead   = null;
-
-                if (this.mounted)
-                        return;
 
                 System.out.println("Initializing GlusterFS");
 
                 try {
-                        volName = conf.get("fs.glusterfs.volname", "");
                         glusterMount = conf.get("fs.glusterfs.mount", "");
-                        remoteGFSServer = conf.get("fs.glusterfs.server", "");
                         needQuickRead = conf.get("quick.slave.io", "");
 
-                        /*
-                         * bail out if we do not have enough information to do a FUSE
-                         * mount
-                         */
-                        if ( (volName.length() == 0) || (remoteGFSServer.length() == 0) ||
-                             (glusterMount.length() == 0) )
-                                System.exit (-1);
-
-                        ret = FUSEMount(volName, remoteGFSServer, glusterMount);
+                        ret = sanitize(glusterMount);
                         if (!ret) {
                                 System.out.println("Failed to initialize GlusterFS");
                                 System.exit(-1);
@@ -134,7 +112,6 @@ public class GlusterFileSystem extends FileSystem {
                                 || needQuickRead.equals("1")))
                                 this.quickSlaveIO = true;
 
-                        this.mounted = true;
                         this.glusterFs = FileSystem.getLocal(conf);
                         this.workingDir = new Path(glusterMount);
                         this.uri = URI.create(uri.getScheme() + "://" + uri.getAuthority());

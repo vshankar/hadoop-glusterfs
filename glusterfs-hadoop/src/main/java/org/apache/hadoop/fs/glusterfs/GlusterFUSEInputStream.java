@@ -123,6 +123,11 @@ public class GlusterFUSEInputStream extends FSInputStream {
                                         lastActive = false;
                                 }
                         }
+
+                        if (oldActiveStream != lastActive)
+                                System.out.println("Switching Stream: " + (oldActiveStream ? "FUSE" : "FS") + " -> " +
+                                                   (lastActive ? "FUSE" : "FS") + " [position: " + start + "]");
+                                in.seek(start);
                 }
 
                 return in;
@@ -137,12 +142,11 @@ public class GlusterFUSEInputStream extends FSInputStream {
 
                 int[] nlen = { 1 };
 
-                in = chooseStream(getPos(), nlen);
+                in = chooseStream(pos, nlen);
 
                 byteRead = in.read();
                 if (byteRead >= 0) {
                         pos++;
-                        syncStreams(1);
                 }
 
                 return byteRead;
@@ -162,21 +166,18 @@ public class GlusterFUSEInputStream extends FSInputStream {
                 result = in.read(buff, off, nlen[0]);
                 if (result > 0) {
                         pos += result;
-                        syncStreams(result);
                 }
 
                 return result;
         }
 
-        /**
-         * TODO: use seek() insted of skipBytes(); skipBytes does I/O
-         */
-        public void syncStreams (int bytes) throws IOException {
+        // @notused
+        public void syncStreams (long position) throws IOException {
                 if ((hnts != null) && (hnts.get(0).isChunked()) && (fsInputStream != null))
                         if (!this.lastActive)
-                                fuseInputStream.skipBytes(bytes);
+                                fuseInputStream.seek(position);
                         else
-                                fsInputStream.skipBytes(bytes);
+                                fsInputStream.seek(position);
         }
 
         public synchronized void close () throws IOException {
